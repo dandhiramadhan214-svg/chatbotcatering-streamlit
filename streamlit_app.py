@@ -40,7 +40,7 @@ def load_model():
         classes = pickle.load(f)
     
     model = tf.keras.models.load_model(
-        "Catering_Customer_service_chatbot.keras",
+        "catering_customer_service_chatbot.keras",
         compile=False
     )
     
