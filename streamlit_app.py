@@ -6,55 +6,43 @@ import numpy as np
 import nltk
 from nltk.stem import WordNetLemmatizer
 import tensorflow as tf
+import streamlit.components.v1 as components
 
 # ==============================
-# PAGE CONFIG (HARUS PALING ATAS)
+# PAGE CONFIG
 # ==============================
 st.set_page_config(
-    page_title="Chatbot Catering Service",
+    page_title="Chatbot Catering",
     page_icon="🍽️",
     layout="centered"
 )
 
 # ==============================
-# NLTK SETUP (FIX PUNKT_TAB)
+# NLTK
 # ==============================
 @st.cache_resource
-def download_nltk_data():
-    resources = [
-        "punkt",
-        "punkt_tab",
-        "wordnet"
-    ]
-    for res in resources:
+def download_nltk():
+    for r in ["punkt", "punkt_tab", "wordnet"]:
         try:
-            nltk.data.find(res)
-        except LookupError:
-            nltk.download(res, quiet=True)
+            nltk.data.find(r)
+        except:
+            nltk.download(r, quiet=True)
 
-download_nltk_data()
+download_nltk()
 
 # ==============================
-# LOAD MODEL & DATA
+# LOAD MODEL
 # ==============================
 @st.cache_resource
 def load_model():
     lemmatizer = WordNetLemmatizer()
-
-    with open("intents.json", "r", encoding="utf-8") as f:
-        intents = json.load(f)
-
-    with open("words.pkl", "rb") as f:
-        words = pickle.load(f)
-
-    with open("classes.pkl", "rb") as f:
-        classes = pickle.load(f)
-
+    intents = json.load(open("intents.json", encoding="utf-8"))
+    words = pickle.load(open("words.pkl", "rb"))
+    classes = pickle.load(open("classes.pkl", "rb"))
     model = tf.keras.models.load_model(
         "catering_customer_service_chatbot.keras",
         compile=False
     )
-
     return lemmatizer, intents, words, classes, model
 
 lemmatizer, intents, words, classes, model = load_model()
@@ -62,118 +50,74 @@ lemmatizer, intents, words, classes, model = load_model()
 # ==============================
 # SESSION STATE
 # ==============================
-if "context" not in st.session_state:
-    st.session_state.context = {}
-
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": "Halo! Selamat datang di layanan catering kami. Ada yang bisa saya bantu?"
-        }
+        ("bot", "Halo 👋 Saya asisten layanan pelanggan catering.")
     ]
 
 # ==============================
-# NLP FUNCTIONS
+# NLP
 # ==============================
-def clean_up_sentence(sentence):
-    sentence_words = nltk.word_tokenize(sentence, language="english")
-    return [lemmatizer.lemmatize(word.lower()) for word in sentence_words]
+def clean(sentence):
+    return [lemmatizer.lemmatize(w.lower()) for w in nltk.word_tokenize(sentence)]
 
-def bag_of_words(sentence):
-    sentence_words = clean_up_sentence(sentence)
-    bag = [0] * len(words)
-    for w in sentence_words:
-        for i, word in enumerate(words):
-            if word == w:
+def bow(sentence):
+    s_words = clean(sentence)
+    bag = [0]*len(words)
+    for s in s_words:
+        for i,w in enumerate(words):
+            if w == s:
                 bag[i] = 1
     return np.array(bag)
 
-def predict_class(sentence):
-    bow = bag_of_words(sentence)
-    res = model.predict(np.array([bow]), verbose=0)[0]
-    ERROR_THRESHOLD = 0.25
+def predict(sentence):
+    res = model.predict(np.array([bow(sentence)]), verbose=0)[0]
+    idx = np.argmax(res)
+    return classes[idx]
 
-    results = [[i, r] for i, r in enumerate(res) if r > ERROR_THRESHOLD]
-    results.sort(key=lambda x: x[1], reverse=True)
-
-    return [
-        {"intent": classes[r[0]], "probability": str(r[1])}
-        for r in results
-    ]
-
-def get_response(intents_list, intents_json, user_id="user"):
-    if not intents_list:
-        return "Maaf, saya belum memahami pertanyaan Anda."
-
-    tag = intents_list[0]["intent"]
-
-    for intent in intents_json["intents"]:
-        if intent["tag"] == tag:
-
-            if "context_filter" in intent:
-                if user_id not in st.session_state.context:
-                    return "Maaf, saya belum memahami pertanyaan Anda."
-                if intent["context_filter"] != st.session_state.context[user_id]:
-                    return "Maaf, saya belum memahami pertanyaan Anda."
-
-            if "context_set" in intent:
-                st.session_state.context[user_id] = intent["context_set"]
-
-            return random.choice(intent["responses"])
-
+def respond(msg):
+    tag = predict(msg)
+    for i in intents["intents"]:
+        if i["tag"] == tag:
+            return random.choice(i["responses"])
     return "Maaf, saya belum memahami pertanyaan Anda."
 
 # ==============================
-# UI HEADER
+# HTML UI
 # ==============================
-st.title("🍽️ Chatbot Catering")
-st.caption("Customer Service Assistant")
+chat_html = """
+<style>
+.chatbox{
+    max-width:600px;
+    margin:auto;
+    background:#fdfdfd;
+    border-radius:20px;
+    padding:20px;
+}
+.bubble{
+    padding:10px 15px;
+    border-radius:15px;
+    margin:5px 0;
+    max-width:80%;
+}
+.user{background:#dcf8c6;margin-left:auto;}
+.bot{background:#eee;}
+</style>
+<div class="chatbox">
+"""
+for role,msg in st.session_state.messages:
+    chat_html += f'<div class="bubble {role}">{msg}</div>'
+chat_html += "</div>"
+
+components.html(chat_html, height=400)
 
 # ==============================
-# CHAT HISTORY (PASTI MUNCUL)
+# INPUT
 # ==============================
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+user_msg = st.text_input("Ketik pesan Anda")
 
-# ==============================
-# CHAT INPUT
-# ==============================
-if prompt := st.chat_input("Ketik pesan Anda..."):
-    st.session_state.messages.append(
-        {"role": "user", "content": prompt}
-    )
-
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        with st.spinner("Mengetik..."):
-            intents_pred = predict_class(prompt)
-            reply = get_response(intents_pred, intents)
-            st.markdown(reply)
-
-    st.session_state.messages.append(
-        {"role": "assistant", "content": reply}
-    )
-
-# ==============================
-# SIDEBAR
-# ==============================
-with st.sidebar:
-    st.header("ℹ️ Informasi")
-    st.write("- Informasi menu catering")
-    st.write("- Harga paket")
-    st.write("- Cara pemesanan")
-    st.write("- Jam operasional")
-
-    if st.button("🗑️ Clear Chat"):
-        st.session_state.messages = [
-            {
-                "role": "assistant",
-                "content": "Halo! Selamat datang di layanan catering kami. Ada yang bisa saya bantu?"
-            }
-        ]
-        st.session_state.context = {}
-        st.rerun()
+if st.button("Kirim") and user_msg:
+    st.session_state.messages.append(("user", user_msg))
+    bot_reply = respond(user_msg)
+    st.session_state.messages.append(("bot", bot_reply))
+    st.rerun()
