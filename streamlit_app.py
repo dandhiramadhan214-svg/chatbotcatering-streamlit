@@ -17,19 +17,20 @@ st.set_page_config(
 )
 
 # ==============================
-# NLTK SETUP
+# NLTK SETUP (FIX PUNKT_TAB)
 # ==============================
 @st.cache_resource
 def download_nltk_data():
-    try:
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
-        nltk.download("punkt", quiet=True)
-
-    try:
-        nltk.data.find("corpora/wordnet")
-    except LookupError:
-        nltk.download("wordnet", quiet=True)
+    resources = [
+        "punkt",
+        "punkt_tab",
+        "wordnet"
+    ]
+    for res in resources:
+        try:
+            nltk.data.find(res)
+        except LookupError:
+            nltk.download(res, quiet=True)
 
 download_nltk_data()
 
@@ -76,7 +77,7 @@ if "messages" not in st.session_state:
 # NLP FUNCTIONS
 # ==============================
 def clean_up_sentence(sentence):
-    sentence_words = nltk.word_tokenize(sentence)
+    sentence_words = nltk.word_tokenize(sentence, language="english")
     return [lemmatizer.lemmatize(word.lower()) for word in sentence_words]
 
 def bag_of_words(sentence):
@@ -110,14 +111,12 @@ def get_response(intents_list, intents_json, user_id="user"):
     for intent in intents_json["intents"]:
         if intent["tag"] == tag:
 
-            # Context filter
             if "context_filter" in intent:
                 if user_id not in st.session_state.context:
                     return "Maaf, saya belum memahami pertanyaan Anda."
                 if intent["context_filter"] != st.session_state.context[user_id]:
                     return "Maaf, saya belum memahami pertanyaan Anda."
 
-            # Context set
             if "context_set" in intent:
                 st.session_state.context[user_id] = intent["context_set"]
 
@@ -142,7 +141,6 @@ for msg in st.session_state.messages:
 # CHAT INPUT
 # ==============================
 if prompt := st.chat_input("Ketik pesan Anda..."):
-    # tampilkan pesan user
     st.session_state.messages.append(
         {"role": "user", "content": prompt}
     )
@@ -150,7 +148,6 @@ if prompt := st.chat_input("Ketik pesan Anda..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # respon bot
     with st.chat_message("assistant"):
         with st.spinner("Mengetik..."):
             intents_pred = predict_class(prompt)
@@ -166,7 +163,6 @@ if prompt := st.chat_input("Ketik pesan Anda..."):
 # ==============================
 with st.sidebar:
     st.header("ℹ️ Informasi")
-    st.write("Chatbot ini dapat membantu Anda:")
     st.write("- Informasi menu catering")
     st.write("- Harga paket")
     st.write("- Cara pemesanan")
